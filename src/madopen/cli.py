@@ -25,20 +25,14 @@ from datetime import datetime
 
 import click
 
-HOME = os.environ.get("MADOPEN_HOME", "/home/samtell/projects/madopen")
-DB_PATH = HOME + "/history.db"
+from . import paths
 
-# madft is bundled in bin/; fall back to PATH if it's been moved.
-MADFT = os.path.join(HOME, "bin", "madft")
-if not os.path.exists(MADFT):
-    MADFT = "madft"
+# madft is an external dependency, resolved from PATH.
+MADFT = "madft"
 
 # Half-life (in days) of a single open in the recency-weighted frequency score.
 # A visit today counts ~1.0; one half-life ago counts 0.5; two ago 0.25; etc.
 HALF_LIFE_DAYS = 30.0
-
-# .desktop search dirs, user overriding system.
-APP_DIRS = [os.path.expanduser("~/.local/share/applications"), "/usr/share/applications"]
 
 
 # --------------------------------------------------------------------------- #
@@ -202,7 +196,7 @@ def find_desktop(app_id):
         return ""
     if not app_id.endswith(".desktop"):
         app_id += ".desktop"
-    for d in APP_DIRS:
+    for d in paths.app_dirs():
         p = os.path.join(d, app_id)
         if os.path.isfile(p):
             return p
@@ -390,7 +384,8 @@ def file_state(path, mount, on_mount):
 # --------------------------------------------------------------------------- #
 
 def connect():
-    conn = sqlite3.connect(DB_PATH)
+    os.makedirs(paths.state_dir(), exist_ok=True)
+    conn = sqlite3.connect(paths.db_path())
     ensure_schema(conn)
     return conn
 
