@@ -8,7 +8,7 @@ from . import paths
 DEFAULTS = {
     "preview_window": "right:50%:wrap",
     "enable_preview": True,
-    "image_backend": "chafa",
+    "image_backend": "auto",
     "enable_video": True,
     "enable_pdf": True,
     "fzf_flags": [],

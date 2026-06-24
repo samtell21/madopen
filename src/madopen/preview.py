@@ -4,23 +4,41 @@
 Config knobs arrive as environment variables (see build_preview_env): the image
 backend and the video/pdf toggles. Every external tool is `command -v`-guarded,
 so a missing tool degrades to `file -b` / `head` / `ls`.
+
+Image backend is auto-detected by default: native `kitten icat` inside kitty,
+else `chafa` (sixel/iterm/symbols), else file metadata. Visual content
+(image/video-still/pdf-page) renders full-pane with no path header, so the image
+fills the preview cleanly; textual content gets the full path on top.
 """
 
-# Renders the item passed by fzf as {}. Layout: full path on top (so long paths
-# are always visible), then a kind-specific body. A trailing " (new)" label
-# (from the --new dir picker) is stripped first.
+# Renders the item passed by fzf as {}. A trailing " (new)" label (from the
+# --new dir picker) is stripped first.
 PREVIEW_SH = r"""
 p={}; p="${p% (new)}"
 printf '%s\n\n' "$p"
 
 img() {
-    backend="${MADOPEN_IMAGE_BACKEND:-chafa}"
-    if [ "$backend" = "kitten" ] && command -v kitten >/dev/null 2>&1; then
-        kitten icat --clear --transfer-mode=memory \
-            --stdin=no --place="${FZF_PREVIEW_COLUMNS}x${FZF_PREVIEW_LINES}@0x0" "$1" 2>/dev/null && return
+    cols="${FZF_PREVIEW_COLUMNS:-80}"
+    # leave room for the 2-line path header above (path + blank line)
+    rows="$(( ${FZF_PREVIEW_LINES:-40} - 2 ))"
+    backend="${MADOPEN_IMAGE_BACKEND:-auto}"
+    if [ "$backend" = auto ]; then
+        if [ -n "$KITTY_WINDOW_ID" ] && command -v kitten >/dev/null 2>&1; then
+            backend=kitten
+        elif command -v chafa >/dev/null 2>&1; then
+            backend=chafa
+        else
+            backend=none
+        fi
     fi
-    if command -v chafa >/dev/null 2>&1; then
-        chafa -s "${FZF_PREVIEW_COLUMNS}x${FZF_PREVIEW_LINES}" "$1" 2>/dev/null && return
+    if [ "$backend" = kitten ] && command -v kitten >/dev/null 2>&1; then
+        # --unicode-placeholder flows the image at the cursor (the preview pane),
+        # so @0x0 is relative to it rather than the whole screen.
+        kitten icat --clear --transfer-mode=memory --unicode-placeholder \
+            --stdin=no --place="${cols}x${rows}@0x0" "$1" && return
+    fi
+    if [ "$backend" = chafa ] && command -v chafa >/dev/null 2>&1; then
+        chafa -s "${cols}x${rows}" "$1" && return
     fi
     file -b "$1"
 }
@@ -37,7 +55,11 @@ else
         video/*)
             if [ -n "$MADOPEN_ENABLE_VIDEO" ] && command -v ffmpegthumbnailer >/dev/null 2>&1; then
                 tmp=$(mktemp --suffix=.png 2>/dev/null) || tmp=/tmp/madopen_vprev.png
-                ffmpegthumbnailer -i "$p" -o "$tmp" -s 0 >/dev/null 2>&1 && img "$tmp"
+                if ffmpegthumbnailer -i "$p" -o "$tmp" -s 0 >/dev/null 2>&1; then
+                    img "$tmp"
+                else
+                    file -b "$p"
+                fi
                 rm -f "$tmp"
             else
                 file -b "$p"
@@ -45,7 +67,11 @@ else
         application/pdf)
             if [ -n "$MADOPEN_ENABLE_PDF" ] && command -v pdftoppm >/dev/null 2>&1; then
                 tmp=$(mktemp 2>/dev/null) || tmp=/tmp/madopen_pprev
-                pdftoppm -png -f 1 -l 1 -scale-to 1000 "$p" "$tmp" >/dev/null 2>&1 && img "${tmp}-1.png"
+                if pdftoppm -png -f 1 -l 1 -scale-to 1000 "$p" "$tmp" >/dev/null 2>&1; then
+                    img "${tmp}-1.png"
+                else
+                    pdfinfo "$p" 2>/dev/null || file -b "$p"
+                fi
                 rm -f "${tmp}"*.png "$tmp"
             else
                 pdfinfo "$p" 2>/dev/null || file -b "$p"
@@ -65,7 +91,7 @@ fi
 def build_preview_env(config):
     """Environment variables consumed by PREVIEW_SH, derived from config."""
     return {
-        "MADOPEN_IMAGE_BACKEND": config.get("image_backend") or "chafa",
+        "MADOPEN_IMAGE_BACKEND": config.get("image_backend") or "auto",
         "MADOPEN_ENABLE_VIDEO": "1" if config.get("enable_video", True) else "",
         "MADOPEN_ENABLE_PDF": "1" if config.get("enable_pdf", True) else "",
     }

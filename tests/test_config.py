@@ -23,7 +23,7 @@ def test_overrides_applied(tmp_path):
     assert cfg["fzf_flags"] == ["--no-mouse"]
     assert cfg["custom_picker"] == "/x/pick.sh"
     # untouched keys keep defaults
-    assert cfg["image_backend"] == "chafa"
+    assert cfg["image_backend"] == "auto"
 
 
 def test_malformed_toml_falls_back_to_defaults(tmp_path):
