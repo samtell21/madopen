@@ -6,11 +6,13 @@ the binary is `madopen-bin`, so there is no recursion.
 """
 import sys
 
-# The body is POSIX-sh compatible, so the same text serves zsh and bash.
+# The body is POSIX-sh compatible, so the same text serves zsh and bash. We emit
+# no comments (clean output, zoxide-style): `3>&1` makes fd 3 the
+# command-substitution capture pipe while `1>/dev/tty` keeps the binary's (and
+# any editor's) stdout on the terminal — the explanation lives here, not in every
+# user's shell.
 _FUNCTION = r"""madopen() {
     local dir
-    # 3>&1  -> fd 3 becomes the command-substitution capture pipe
-    # 1>/dev/tty -> the binary's (and any editor's) stdout goes to the terminal
     dir="$(madopen-bin "$@" 3>&1 1>/dev/tty)" || return
     [ -n "$dir" ] && [ -d "$dir" ] && cd -- "$dir"
 }
