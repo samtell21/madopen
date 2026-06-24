@@ -724,5 +724,14 @@ def main(application, category, history_only, no_history, peek, new, select,
                    allowed, app, app_args)
 
 
+def entry():
+    """Console-script entry: dispatch `init` to the shell emitter, else run the CLI."""
+    if len(sys.argv) >= 2 and sys.argv[1] == "init":
+        from . import shell  # imported lazily; shell.py arrives in Task 3
+        shell_arg = sys.argv[2] if len(sys.argv) > 2 else "zsh"
+        return shell.shell_init(shell_arg)
+    return main()
+
+
 if __name__ == "__main__":
-    main()
+    entry()

@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "madopen"
+version = "0.1.0"
+description = "Open recent/frequent files from anywhere, zoxide-style."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = ["click"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+madopen-bin = "madopen.cli:entry"
+
+[tool.setuptools.packages.find]
+where = ["src"]
