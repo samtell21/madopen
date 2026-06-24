@@ -87,13 +87,10 @@ def fzf_filter(items, query):
 def build_fzf_argv(config, preview_cmd):
     """Assemble the interactive fzf argv from config. Tab moves up the list,
     Shift-Tab down, and --cycle wraps (best match sits at the bottom)."""
-    argv = [
-        "fzf", "--smart-case",
-        "--bind", "tab:up,shift-tab:down",
-        "--cycle",
-        "--preview", preview_cmd,
-        "--preview-window", config.get("preview_window", "right:50%:wrap"),
-    ]
+    argv = ["fzf", "--smart-case", "--bind", "tab:up,shift-tab:down", "--cycle"]
+    if preview_cmd:
+        argv += ["--preview", preview_cmd,
+                 "--preview-window", config.get("preview_window", "right:50%:wrap")]
     argv += list(config.get("fzf_flags") or [])
     return argv
 
@@ -123,11 +120,8 @@ def fzf_pick(items):
     if custom:
         return _run([custom], stdin=stdin).strip()
 
-    if config.get("enable_preview", True):
-        argv = build_fzf_argv(config, preview.PREVIEW_SH)
-    else:
-        argv = ["fzf", "--smart-case", "--bind", "tab:up,shift-tab:down", "--cycle"]
-        argv += list(config.get("fzf_flags") or [])
+    preview_cmd = preview.PREVIEW_SH if config.get("enable_preview", True) else None
+    argv = build_fzf_argv(config, preview_cmd)
 
     env = {**os.environ, **preview.build_preview_env(config)}
     return _run(argv, stdin=stdin, env=env).strip()

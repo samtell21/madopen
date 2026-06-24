@@ -12,6 +12,14 @@ def test_fzf_argv_has_flipped_binds_and_cycle():
     assert argv[i + 1] == "right:50%:wrap"
 
 
+def test_fzf_argv_omits_preview_when_none():
+    argv = cli.build_fzf_argv({"preview_window": "x", "fzf_flags": []}, None)
+    assert "--preview" not in argv
+    assert "--preview-window" not in argv
+    assert "tab:up,shift-tab:down" in argv
+    assert "--cycle" in argv
+
+
 def test_fzf_argv_appends_extra_flags():
     argv = cli.build_fzf_argv({"preview_window": "x", "fzf_flags": ["--no-mouse"]}, "P")
     assert argv[-1] == "--no-mouse"
