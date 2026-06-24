@@ -39,7 +39,7 @@ the shell wrapper can `cd` there.
 madopen is a Python package; install it with pipx (or pip):
 
 ```sh
-git clone <repo-url> madopen && cd madopen
+git clone https://github.com/samtell21/madopen.git && cd madopen
 pipx install .            # or: pip install --user .
 ```
 
@@ -68,7 +68,7 @@ alias vimh='madopen -h -a nvim'
 | `fzf` | the picker |
 | `gio` (glibc/`glib2`) | accurate MIME detection |
 | `gtk-launch` (`gtk3`/`gtk4`) | launching GUI apps |
-| [`madft`](https://github.com/<you>/madft) | MIME → app/category resolution — `cargo install --path .` then `madft init` |
+| [`madft`](https://github.com/samtell21/madft) | MIME → app/category resolution — `cargo install --git https://github.com/samtell21/madft` then `madft init` |
 | `file` | preview text-detection |
 
 Optional preview enhancers (all degrade gracefully if absent): **`bat`**, **`eza`**
