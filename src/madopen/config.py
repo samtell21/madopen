@@ -1,5 +1,6 @@
 """Read the optional ~/.config/madopen/config.toml. Flat schema, all keys
 optional; missing or malformed files fall back to defaults."""
+import copy
 import tomllib
 
 from . import paths
@@ -18,11 +19,11 @@ DEFAULTS = {
 def load_config(path=None):
     """Return the merged config dict (defaults overlaid with file values)."""
     path = path or paths.config_path()
-    cfg = dict(DEFAULTS)
+    cfg = copy.deepcopy(DEFAULTS)
     try:
         with open(path, "rb") as fh:
             data = tomllib.load(fh)
-    except (FileNotFoundError, IsADirectoryError, tomllib.TOMLDecodeError):
+    except (FileNotFoundError, IsADirectoryError, PermissionError, tomllib.TOMLDecodeError):
         return cfg
     for key in DEFAULTS:
         if key in data:

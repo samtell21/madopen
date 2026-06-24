@@ -31,3 +31,10 @@ def test_malformed_toml_falls_back_to_defaults(tmp_path):
     p.write_text("this is = = not valid toml [[[")
     cfg = config.load_config(str(p))
     assert cfg["preview_window"] == "right:50%:wrap"
+
+
+def test_returned_lists_are_isolated_from_defaults():
+    cfg1 = config.load_config("/nonexistent/x.toml")
+    cfg1["fzf_flags"].append("--mutated")
+    cfg2 = config.load_config("/nonexistent/x.toml")
+    assert cfg2["fzf_flags"] == []
