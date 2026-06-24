@@ -22,11 +22,3 @@ def db_path():
 def config_path():
     """Full path to the optional config.toml ($XDG_CONFIG_HOME/madopen)."""
     return os.path.join(_xdg("XDG_CONFIG_HOME", ".config"), "madopen", "config.toml")
-
-
-def app_dirs():
-    """`applications/` dirs, highest precedence first: data_home then data_dirs."""
-    data_home = _xdg("XDG_DATA_HOME", ".local/share")
-    data_dirs = os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share"
-    bases = [data_home] + [d for d in data_dirs.split(":") if d]
-    return [os.path.join(d, "applications") for d in bases]

@@ -201,35 +201,24 @@ def category_mimetypes(category):
 # launching
 # --------------------------------------------------------------------------- #
 
-def find_desktop(app_id):
-    """Full path of a .desktop id (with or without the suffix), or ''."""
+def madft_desktop_exec(app_id):
+    """(command_argv, terminal_bool) for `app_id`, via `madft app <id> desktop
+    Exec Terminal`, or (None, False) if madft doesn't know the app.
+
+    madft owns .desktop parsing (it emits the Exec line and Terminal flag); we no
+    longer walk the applications dirs ourselves. Field codes (%f, %U, %i, ...) are
+    stripped; the caller appends the real file. An unknown app yields empty stdout
+    (madft reports the error on stderr, which `_run` drops)."""
     if not app_id:
-        return ""
-    if not app_id.endswith(".desktop"):
-        app_id += ".desktop"
-    for d in paths.app_dirs():
-        p = os.path.join(d, app_id)
-        if os.path.isfile(p):
-            return p
-    return ""
-
-
-def desktop_exec(desktop_path):
-    """(command_argv, terminal_bool) parsed from a .desktop file's [Desktop Entry].
-
-    Field codes (%f, %U, %i, ...) are stripped; the caller appends the real file."""
-    exec_line, terminal, in_entry = "", False, False
-    with open(desktop_path) as fh:
-        for line in fh:
-            line = line.rstrip("\n")
-            if line.startswith("["):
-                in_entry = line == "[Desktop Entry]"
-            elif in_entry and line.startswith("Exec=") and not exec_line:
-                exec_line = line[len("Exec="):]
-            elif in_entry and line.startswith("Terminal="):
-                terminal = line[len("Terminal="):].strip().lower() == "true"
+        return None, False
+    out = _run([MADFT, "app", app_id, "desktop", "Exec", "Terminal"])
+    lines = out.splitlines()
+    if not lines or not lines[0].strip():
+        return None, False
+    exec_line = lines[0]
+    terminal = len(lines) > 1 and lines[1].strip().lower() == "true"
     argv = [t for t in shlex.split(exec_line) if not (len(t) == 2 and t[0] == "%")]
-    return argv, terminal
+    return (argv or None), terminal
 
 
 def is_empty(path):
@@ -263,23 +252,19 @@ def open_with(path, app=None, app_args=None, cwd=None):
         mimetype = mimetype_of(path) or "text/plain"
 
     app_id = app or default_app(mimetype) or default_app("text/plain")
-    desktop = find_desktop(app_id)
-    if not desktop:
-        print(f"madopen: no .desktop for '{app_id}' ({mimetype})", file=sys.stderr)
-        return
-
-    argv, terminal = desktop_exec(desktop)
+    argv, terminal = madft_desktop_exec(app_id)
     if not argv:
-        print(f"madopen: no Exec line in {desktop}", file=sys.stderr)
+        print(f"madopen: no .desktop for '{app_id}' ({mimetype})", file=sys.stderr)
         return
 
     if terminal:
         # run in THIS terminal, blocking
         subprocess.run(argv + list(app_args or []) + [str(path)], cwd=launch_cwd)
     else:
-        # GUI: let gtk-launch handle .desktop semantics, detached
+        # GUI: let gtk-launch handle .desktop semantics, detached. gtk-launch
+        # accepts the desktop id with or without the .desktop suffix.
         subprocess.Popen(
-            ["gtk-launch", os.path.basename(desktop), str(path)],
+            ["gtk-launch", app_id, str(path)],
             cwd=launch_cwd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             start_new_session=True,
         )
@@ -456,6 +441,12 @@ def record_open(target_path, peek, app=None, app_args=None):
     path = Path(target_path)
     parent, name = str(path.parent), path.name
 
+    # A directory-like target (e.g. `.` or `/`) has no filename; madopen opens
+    # files, so refuse rather than open/record a directory and pollute history.
+    if not name:
+        print(f"madopen: not a file: {target_path}", file=sys.stderr)
+        return
+
     open_with(target_path, app, app_args, cwd=resolve_launch_cwd(target_path, peek))
 
     mount, on_mount = mount_of(parent)
@@ -506,9 +497,14 @@ def history_search(dq, fq="", include_deleted=False):
         rows = cur.fetchall()
 
         # recency-weighted frequency per (directory, filename), plus each
-        # directory's recorded mount (to tell deletions from offline mounts)
+        # directory's recorded mount (to tell deletions from offline mounts).
+        # Rows with no filename are malformed (legacy/relative-dir junk): their
+        # path collapses to the directory itself (e.g. `.`), which exists and so
+        # survives pruning, polluting every result — skip them.
         freq, dir_mount = {}, {}
         for epoch, d, f, mount, on_mount in rows:
+            if not f:
+                continue
             freq[(d, f)] = freq.get((d, f), 0.0) + recency_weight(epoch, now)
             if mount or d not in dir_mount:
                 dir_mount[d] = (mount or "", on_mount or "")
@@ -707,7 +703,7 @@ def main(application, category, history_only, no_history, peek, new, select,
 
     allowed = None
     if app:
-        if not find_desktop(app):
+        if madft_desktop_exec(app)[0] is None:
             print(f"madopen: unknown application '{app}'", file=sys.stderr)
             sys.exit(1)
         allowed = app_mimetypes(app) or None   # no type info -> don't filter
