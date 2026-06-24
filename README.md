@@ -36,37 +36,64 @@ the shell wrapper can `cd` there.
 
 ## Install
 
-Dependencies:
+madopen is a Python package; install it with pipx (or pip):
+
+```sh
+git clone <repo-url> madopen && cd madopen
+pipx install .            # or: pip install --user .
+```
+
+Then add the shell integration to your `~/.zshrc` (or `~/.bashrc`) — this defines
+the `madopen` function (needed so it can `cd` your shell; a child process can't):
+
+```sh
+eval "$(madopen-bin init zsh)"     # use `bash` for bash
+```
+
+Suggested aliases (optional — copy what you like into your rc):
+
+```sh
+alias o='madopen'              # browse + open
+alias oh='madopen -h'          # search history only
+alias vim='madopen -a nvim'    # open with nvim, filtered to files it handles
+alias vimh='madopen -h -a nvim'
+```
+
+### Dependencies
 
 | Required | for |
 |---|---|
-| `python3` + `click` | the tool |
+| `python3` ≥ 3.11 + `click` | the tool (installed by pipx) |
 | `zoxide` | directory resolution |
 | `fzf` | the picker |
 | `gio` (glibc/`glib2`) | accurate MIME detection |
 | `gtk-launch` (`gtk3`/`gtk4`) | launching GUI apps |
-| `madft` | MIME → app/category resolution (bundled in `bin/`) |
+| [`madft`](https://github.com/<you>/madft) | MIME → app/category resolution — `cargo install --path .` then `madft init` |
 | `file` | preview text-detection |
 
-Optional: **`bat`** and **`eza`** make the preview nicer (plain `head`/`ls` fallbacks otherwise).
+Optional preview enhancers (all degrade gracefully if absent): **`bat`**, **`eza`**
+(nicer text/dir previews), **`chafa`** (inline images), **`ffmpegthumbnailer`**
+(video stills), **`poppler`/`pdftoppm`** (PDF first-page).
 
-Source the shell integration from your `~/.zshrc` (or `~/.bashrc`):
+### Configuration (optional)
 
-```sh
-source /path/to/madopen/madopen.sh
+Drop a `~/.config/madopen/config.toml` to tune the picker. All keys are optional:
+
+```toml
+preview_window = "right:50%:wrap"
+enable_preview = true
+image_backend  = "chafa"          # or "kitten"
+enable_video   = true
+enable_pdf     = true
+fzf_flags      = ["--cycle"]
+
+# Full control: point at your own picker script (stdin = candidates,
+# stdout = selection). When set, the options above are ignored.
+custom_picker  = "/path/to/my-picker.sh"
 ```
 
-That sets `MADOPEN_HOME`, defines the `madopen` shell function (needed so it can
-`cd` your shell — a child process can't), and installs the aliases.
-
-## Aliases
-
-| alias | expands to | use |
-|---|---|---|
-| `o`    | `madopen`         | browse + open |
-| `oh`   | `madopen -h`      | search history only (by name, from anywhere) |
-| `vim`  | `madopen -a nvim` | open with nvim, filtered to files nvim handles |
-| `vimh` | `madopen -h -a nvim` | same, from history |
+The built-in picker/preview ships inside the package — don't edit it in place
+(updates overwrite it); use `custom_picker` for full control.
 
 ## Options
 
@@ -84,15 +111,15 @@ That sets `MADOPEN_HOME`, defines the `madopen` shell function (needed so it can
 
 ## The picker
 
-- **Tab / Shift-Tab** move the cursor down / up (arrows and `Ctrl-n`/`Ctrl-p` also work).
+- **Tab / Shift-Tab** move the cursor **up / down** (the list wraps); arrows and `Ctrl-n`/`Ctrl-p` also work.
 - A **preview pane** shows the full path (so long paths are always visible) plus a
   directory listing (`eza`) or file contents (`bat`).
 - Type to fuzzy-filter; **Enter** opens.
 
 ## History & removable mounts
 
-The history lives in `history.db` (SQLite, gitignored). Each open records the
-filesystem mountpoint it was on. A history entry is only flagged deleted when the
+The history lives at `~/.local/state/madopen/history.db` (SQLite). Each open records
+the filesystem mountpoint it was on. A history entry is only flagged deleted when the
 file is genuinely gone — absent *while its recorded filesystem is mounted*. Files
 on an offline or broken mount (e.g. a disconnected sshfs) are treated as
 *unreachable*, never deleted, so they come back when the mount returns.
