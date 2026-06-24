@@ -81,23 +81,6 @@ def fzf_filter(items, query):
                 stdin="\n".join(items).encode("utf-8")).splitlines()
 
 
-# Picker preview: full path on top (so long paths are always visible), then a
-# directory listing (eza) or file contents (bat), with plain fallbacks. A
-# trailing " (new)" label (from the --new dir picker) is stripped first.
-_FZF_PREVIEW = r"""
-p={}; p="${p% (new)}"
-printf '%s\n\n' "$p"
-if [ -d "$p" ]; then
-    eza -la --color=always --group-directories-first "$p" 2>/dev/null || ls -la "$p"
-elif [ ! -e "$p" ]; then
-    echo '(new file)'
-elif file --mime-type -b "$p" 2>/dev/null | grep -qE '^(text/|application/(json|xml|javascript|toml|x-shellscript|x-yaml|x-desktop))'; then
-    bat --color=always --style=numbers --line-range=:300 "$p" 2>/dev/null || head -n 300 "$p"
-else
-    file -b "$p"
-fi
-"""
-
 
 def fzf_pick(items):
     """Interactive fzf pick over `items`; returns the chosen item ('' if none).
@@ -109,9 +92,7 @@ def fzf_pick(items):
         return ""
     return _run(
         ["fzf", "--smart-case",
-         "--bind", "tab:down,shift-tab:up",
-         "--preview", _FZF_PREVIEW,
-         "--preview-window", "right:50%:wrap"],
+         "--bind", "tab:down,shift-tab:up"],
         stdin="\n".join(items).encode("utf-8"),
     ).strip()
 
