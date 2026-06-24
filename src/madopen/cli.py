@@ -244,7 +244,7 @@ def open_with(path, app=None, app_args=None, cwd=None):
     `cwd` overrides the directory the app is launched in (default: the file's
     parent); --peek passes the caller's cwd so a file-picker stays at the root."""
     parent = str(Path(path).parent)
-    launch_cwd = cwd or parent
+    launch_cwd = cwd if cwd is not None else parent
 
     if not exists_safe(path) or is_empty(path):
         mimetype = "text/plain"           # new/empty files open in the editor
