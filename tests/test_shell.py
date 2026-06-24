@@ -23,5 +23,6 @@ def test_init_bash_supported(capsys):
     assert "madopen()" in capsys.readouterr().out
 
 
-def test_init_unsupported_shell_errors():
+def test_init_unsupported_shell_errors(capsys):
     assert shell.shell_init("fish") != 0
+    assert "unsupported" in capsys.readouterr().err
