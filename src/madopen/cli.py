@@ -26,6 +26,8 @@ from datetime import datetime
 import click
 
 from . import paths
+from . import config as config_mod
+from . import preview
 
 # madft is an external dependency, resolved from PATH.
 MADFT = "madft"
@@ -39,10 +41,10 @@ HALF_LIFE_DAYS = 30.0
 # external command helpers
 # --------------------------------------------------------------------------- #
 
-def _run(argv, stdin=None):
+def _run(argv, stdin=None, env=None):
     """Run `argv`, return stdout as text. `stdin`, if given, is bytes."""
     proc = subprocess.run(
-        argv, input=stdin, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
+        argv, input=stdin, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env,
     )
     return proc.stdout.decode("utf-8")
 
@@ -82,19 +84,53 @@ def fzf_filter(items, query):
 
 
 
-def fzf_pick(items):
-    """Interactive fzf pick over `items`; returns the chosen item ('' if none).
+def build_fzf_argv(config, preview_cmd):
+    """Assemble the interactive fzf argv from config. Tab moves up the list,
+    Shift-Tab down, and --cycle wraps (best match sits at the bottom)."""
+    argv = [
+        "fzf", "--smart-case",
+        "--bind", "tab:up,shift-tab:down",
+        "--cycle",
+        "--preview", preview_cmd,
+        "--preview-window", config.get("preview_window", "right:50%:wrap"),
+    ]
+    argv += list(config.get("fzf_flags") or [])
+    return argv
 
-    Tab/Shift-Tab move the cursor down/up; a preview pane shows the full path
-    plus a directory listing or file contents."""
+
+def custom_picker_path(config):
+    """Path of a user-supplied picker if set and executable, else None."""
+    p = config.get("custom_picker")
+    if p and os.access(p, os.X_OK):
+        return p
+    return None
+
+
+def fzf_pick(items):
+    """Interactive pick over `items`; returns the chosen item ('' if none).
+
+    Reads config.toml: a custom_picker (if set/executable) replaces the built-in
+    picker entirely (candidates on stdin, selection on stdout, other options
+    ignored); otherwise fzf runs with the configured window/flags and the rich
+    preview, whose tool toggles are passed through the environment."""
     items = list(items)
     if not items:
         return ""
-    return _run(
-        ["fzf", "--smart-case",
-         "--bind", "tab:down,shift-tab:up"],
-        stdin="\n".join(items).encode("utf-8"),
-    ).strip()
+    stdin = "\n".join(items).encode("utf-8")
+    config = config_mod.load_config()
+
+    custom = custom_picker_path(config)
+    if custom:
+        return _run([custom], stdin=stdin).strip()
+
+    if config.get("enable_preview", True):
+        argv = build_fzf_argv(config, preview.PREVIEW_SH)
+    else:
+        argv = ["fzf", "--smart-case", "--bind", "tab:up,shift-tab:down", "--cycle"]
+        argv += list(config.get("fzf_flags") or [])
+
+    env = {**os.environ, **preview.build_preview_env(config)}
+    return _run(argv, stdin=stdin, env=env).strip()
 
 
 def list_files(directory, maxdepth):
