@@ -673,8 +673,11 @@ def run_browse(dq, fq, mode, select, peek, directory, maxdepth, query,
 
 
 def run_new(dq, fq, mode, select, peek, app, app_args):
-    """--new: open `fq` as a (possibly brand-new) file in a resolved directory."""
-    hist = history_search(dq, include_deleted=True) if mode == "compare" else []
+    """--new: open `fq` as a (possibly brand-new) file in a resolved directory.
+
+    History suggestions exclude deleted entries — `-n a.py` should propose dirs
+    you actually use, not every old dir that once held a since-deleted a.py."""
+    hist = history_search(dq) if mode == "compare" else []
     zdir = zoxide_best(dq)
     target_dir = zdir
 
