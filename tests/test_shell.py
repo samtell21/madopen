@@ -18,6 +18,16 @@ def test_init_emits_no_aliases(capsys):
     assert "alias oh=" not in out
 
 
+def test_init_guards_cd_with_if(capsys):
+    # The cd must be inside an `if`, not a bare `[ ] && [ ] && cd` chain — else a
+    # no-cd run (e.g. --peek emits no dir) leaks the failed test's exit status and
+    # the function "fails" despite working.
+    shell.shell_init("zsh")
+    out = capsys.readouterr().out
+    assert 'if [ -n "$dir" ]' in out
+    assert "fi" in out
+
+
 def test_init_bash_supported(capsys):
     assert shell.shell_init("bash") == 0
     assert "madopen()" in capsys.readouterr().out

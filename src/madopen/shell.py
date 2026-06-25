@@ -14,7 +14,12 @@ import sys
 _FUNCTION = r"""madopen() {
     local dir
     dir="$(madopen-bin "$@" 3>&1 1>/dev/tty)" || return
-    [ -n "$dir" ] && [ -d "$dir" ] && cd -- "$dir"
+    # An `if` (not `a && b && c`) so that when there's no dir to cd into — e.g.
+    # --peek emits nothing — the function still returns 0 instead of leaking the
+    # failed test's exit status.
+    if [ -n "$dir" ] && [ -d "$dir" ]; then
+        cd -- "$dir"
+    fi
 }
 """
 
