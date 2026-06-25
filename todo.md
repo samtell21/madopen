@@ -2,12 +2,48 @@
 
 ## New todos
 
-- [ ] Make this system-agnostic. E.g., remove explicit references to my user directory, make the project home somewhere in ~/.local, ya know, standard stuff. I'd like to publish this on github as something people might want to use. I am already finding it very useful.
-- [ ] Remove madft from bin, madft is installed separately as a dependency. Users are gonna want the whole install, including the initial categories.toml and the readme, so they can set default apps easily so madopen actually is useful
-- [ ] But along the same lines, I'd typically use peek/-p when I am in the root folder of a project and I want to edit a file without leaving the root. Fine, it works. BUT the subproccess uses the cwd of the file, so file picker in nvim (and any other app if it has something like that) looks at *that* subdirectory, rather than the root directory that I specifically chose to stay in. So better behavior would to use the actual cwd opening the file when -p is used. With -p, current behavior using cwd=parent is fine.
-- [ ] Small thing: lets flip tab and shift tab. fzf displays results in reverse. Best at the bottom. tab should move *up* the list.
-    - [ ] also, wrap would be nice. But still, tab should move up. with wrap, then shift tab at the bottom would go to the top of the list.
-- [ ] Small personal bug: when I am in project mode (see ~/.config/proj, it's a personal productivity system I do not intend to publish), using the zsh function that cds to the directory, I get an error that says the directory is not in the project, even when it is... Honestly, this is probably not a madopen problem but a proj problem, and I should deal with it there. But let's look into it and collect any useful info here about the issue, even if it does not involve changing any code here.
+- [x] Make this system-agnostic (XDG paths, no hardcoded home dir). **Published:**
+      pip-installable package (`src/madopen/`, `madopen-bin` console script,
+      `eval "$(madopen-bin init zsh)"`); history in `~/.local/state/madopen/`.
+      Live at https://github.com/samtell21/madopen (+ origin on the pi).
+- [x] Remove madft from bin — madft is now an external cargo dependency
+      (`cargo install --git …` + `madft init`, which owns `categories.toml`).
+      `bin/madft` deleted; resolved from PATH.
+- [x] `-p`/peek uses the caller's cwd (so nvim's file-picker stays at the root);
+      non-peek still uses the file's parent.
+- [x] Flip tab/shift-tab (tab moves *up*) + wrap (`--cycle`).
+- [ ] **proj-mode "directory is not in the project" bug** — still deferred.
+      Likely a proj-side issue, not madopen; investigate `~/.config/proj` and
+      record findings here (no madopen code change expected).
+
+## Done this session (post-publish fixes)
+
+- [x] Bespoke launcher: run the app's `.desktop` Exec directly (from
+      `madft app <id> desktop`), **dropped gtk-launch**. Robust field-code
+      handling (`build_launch_argv`).
+- [x] Pass args to the app after `--` (works with/without `-a`),
+      e.g. `o report -- -R`, `vim notes -- +42`.
+- [x] Rich image previews: auto-detect backend (kitten in kitty → chafa →
+      file), `--unicode-placeholder` for correct fzf-pane placement.
+- [x] `-n` no longer suggests dirs whose only history is a *deleted* file.
+- [x] `-p` shell function returns 0 (was leaking a phantom error code).
+
+## Findings (not madopen bugs)
+
+- mpv screenshots landing in `~`: mpv's built-in `pseudo-gui` profile sets
+  `screenshot-dir=~~desktop/` and ignores cwd. Fix in `~/.config/mpv/mpv.conf`:
+  `[pseudo-gui]` → `screenshot-directory=.` (madopen launches in the file's dir).
+- `.py` with an html-ish comment reads as `text/html` to `file`/`xdg-mime`, but
+  madopen detects via **gio** (`text/x-python3` → nvim), so opening is correct.
+  Python's stdlib `mimetypes` is extension-only (None for extensionless files),
+  so it can't replace gio. gio stays.
+
+## Next / maybe
+
+- [ ] Publish to PyPI (`python -m build` + `twine upload`; pkg is ready, v0.1.0).
+- [ ] Watch: `-a`/`-c` filtering compares gio's mimetype to the app/category's
+      declared types — if a file you expect under `vim`/`-c Text` doesn't show,
+      it's a mimetype-name mismatch to chase.
 
 ---
 
