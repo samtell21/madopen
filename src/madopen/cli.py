@@ -9,10 +9,11 @@ large pile of stale opens.
 
 The chosen file is opened directly (terminal apps run in the current terminal,
 GUI apps launch detached) and recorded in the history; its parent directory is
-emitted on fd 3 so the sourced shell wrapper (`madopen.sh`) can cd into it.
+emitted on fd 3 so the shell function (from `madopen-bin init`) can cd into it.
 
-External tools used directly (no shell wrappers): zoxide, fzf, gio, gtk-launch,
-and madft (bundled in bin/, resolved by absolute path so madopen works anywhere).
+External tools used directly (no shell wrappers): zoxide, fzf, gio, file, and
+madft (resolved from PATH). Apps are launched from their .desktop Exec line
+(obtained via madft), not gtk-launch, so the launch cwd is honored.
 """
 import os
 import sys
@@ -202,23 +203,73 @@ def category_mimetypes(category):
 # --------------------------------------------------------------------------- #
 
 def madft_desktop_exec(app_id):
-    """(command_argv, terminal_bool) for `app_id`, via `madft app <id> desktop
+    """(exec_tokens, terminal_bool) for `app_id`, via `madft app <id> desktop
     Exec Terminal`, or (None, False) if madft doesn't know the app.
 
     madft owns .desktop parsing (it emits the Exec line and Terminal flag); we no
-    longer walk the applications dirs ourselves. Field codes (%f, %U, %i, ...) are
-    stripped; the caller appends the real file. An unknown app yields empty stdout
-    (madft reports the error on stderr, which `_run` drops)."""
+    longer walk the applications dirs ourselves. The Exec line is returned as raw
+    tokens with field codes intact (see `build_launch_argv` for expansion). An
+    unknown app yields empty stdout (madft reports the error on stderr, which
+    `_run` drops)."""
     if not app_id:
         return None, False
     out = _run([MADFT, "app", app_id, "desktop", "Exec", "Terminal"])
     lines = out.splitlines()
     if not lines or not lines[0].strip():
         return None, False
-    exec_line = lines[0]
     terminal = len(lines) > 1 and lines[1].strip().lower() == "true"
-    argv = [t for t in shlex.split(exec_line) if not (len(t) == 2 and t[0] == "%")]
-    return (argv or None), terminal
+    tokens = shlex.split(lines[0])
+    return (tokens or None), terminal
+
+
+# .desktop Exec field codes that should be replaced by the file/url argument.
+_FILE_CODES = frozenset("fFuU")
+
+
+def build_launch_argv(exec_tokens, path, app_args=None):
+    """Expand a .desktop Exec token list into a concrete launch argv.
+
+    Per the freedesktop Desktop Entry spec: `%%` becomes a literal `%`; the
+    file/url codes (`%f %F %u %U`) are replaced in place by `app_args` followed by
+    the file (so extra args land before it, e.g. `nvim -R file`); every other code
+    (`%i %c %k`, the deprecated ones, and anything unrecognized) is dropped. A
+    token that reduces to nothing (a bare `%u`, etc.) is removed. If no file code
+    appears, `app_args` + the file are appended.
+
+    Handles gnarly real-world lines, e.g.
+    `env LANG=x /bin/foo --flag %A%B%F%G` -> `env LANG=x /bin/foo --flag <file>`.
+    """
+    path = str(path)
+    insert = list(app_args or []) + [path]   # what a file code expands to
+    out, placed = [], False
+    for tok in exec_tokens:
+        # Common case: a standalone file code is the file slot.
+        if len(tok) == 2 and tok[0] == "%" and tok[1] in _FILE_CODES:
+            out.extend(insert)
+            placed = True
+            continue
+        # Otherwise expand char by char: %% -> %, embedded file code -> path,
+        # any other %X -> dropped.
+        res, i = [], 0
+        while i < len(tok):
+            if tok[i] == "%" and i + 1 < len(tok):
+                nxt = tok[i + 1]
+                if nxt == "%":
+                    res.append("%")
+                elif nxt in _FILE_CODES:
+                    res.append(path)
+                    placed = True
+                i += 2
+                continue
+            res.append(tok[i])
+            i += 1
+        new = "".join(res)
+        if new == "" and tok != "":
+            continue                          # token was only dropped codes
+        out.append(new)
+    if not placed:
+        out.extend(insert)
+    return out
 
 
 def is_empty(path):
@@ -239,12 +290,16 @@ def open_with(path, app=None, app_args=None, cwd=None):
     caller's post-open existence check is accurate; GUI apps launch detached.
 
     `app` overrides the default handler (the `-a` flag); `app_args` are extra
-    arguments passed to a terminal app before the file (e.g. nvim's `+10`).
+    arguments placed before the file (from `-a "nvim +10"` or post-`--` args).
 
     `cwd` overrides the directory the app is launched in (default: the file's
-    parent); --peek passes the caller's cwd so a file-picker stays at the root."""
-    parent = str(Path(path).parent)
-    launch_cwd = cwd if cwd is not None else parent
+    parent); --peek passes the caller's cwd so a file-picker stays at the root.
+
+    We launch the app's Exec directly (not via gtk-launch) so the cwd we set is
+    actually inherited — gtk-launch hands GUI apps to the session/systemd layer,
+    which drops the cwd (a screenshot/save lands in $HOME instead of the file's
+    dir). Terminal apps run blocking in this terminal; GUI apps detach."""
+    launch_cwd = cwd if cwd is not None else str(Path(path).parent)
 
     if not exists_safe(path) or is_empty(path):
         mimetype = "text/plain"           # new/empty files open in the editor
@@ -252,21 +307,22 @@ def open_with(path, app=None, app_args=None, cwd=None):
         mimetype = mimetype_of(path) or "text/plain"
 
     app_id = app or default_app(mimetype) or default_app("text/plain")
-    argv, terminal = madft_desktop_exec(app_id)
-    if not argv:
+    exec_tokens, terminal = madft_desktop_exec(app_id)
+    if not exec_tokens:
         print(f"madopen: no .desktop for '{app_id}' ({mimetype})", file=sys.stderr)
         return
 
+    argv = build_launch_argv(exec_tokens, path, app_args)
+
     if terminal:
-        # run in THIS terminal, blocking
-        subprocess.run(argv + list(app_args or []) + [str(path)], cwd=launch_cwd)
+        # run in THIS terminal, blocking, in the file's dir
+        subprocess.run(argv, cwd=launch_cwd)
     else:
-        # GUI: let gtk-launch handle .desktop semantics, detached. gtk-launch
-        # accepts the desktop id with or without the .desktop suffix.
+        # GUI: launch detached, in the file's dir (so saves/screenshots land there)
         subprocess.Popen(
-            ["gtk-launch", app_id, str(path)],
-            cwd=launch_cwd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            start_new_session=True,
+            argv, cwd=launch_cwd,
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, start_new_session=True,
         )
 
 
@@ -695,11 +751,13 @@ def main(application, category, history_only, no_history, peek, new, select,
          directory, maxdepth, query):
     query = " ".join(query)
 
-    # resolve -a into an app id + trailing args, and build the mime allow-set
+    # resolve -a into an app id + inline args, then add any post-`--` args. Both
+    # land before the file at launch (e.g. `-a "nvim +10"` and `o f -- -R`).
     app, app_args = None, []
     if application:
         parts = application.split()
         app, app_args = parts[0], parts[1:]
+    app_args = app_args + _EXTRA_APP_ARGS
 
     allowed = None
     if app:
@@ -736,12 +794,29 @@ def main(application, category, history_only, no_history, peek, new, select,
                    allowed, app, app_args)
 
 
+# Args after a standalone `--` are passed through to the launched app (before the
+# file). Captured here because click would otherwise fold them into the query.
+_EXTRA_APP_ARGS = []
+
+
+def split_app_args(argv):
+    """Split `argv` on the first standalone `--`: (before, after). `after` is the
+    pass-through app args; the `--` itself is dropped. No `--` -> (argv, [])."""
+    if "--" in argv:
+        i = argv.index("--")
+        return argv[:i], argv[i + 1:]
+    return list(argv), []
+
+
 def entry():
     """Console-script entry: dispatch `init` to the shell emitter, else run the CLI."""
     if len(sys.argv) >= 2 and sys.argv[1] == "init":
         from . import shell  # imported lazily; shell.py arrives in Task 3
         shell_arg = sys.argv[2] if len(sys.argv) > 2 else "zsh"
         return shell.shell_init(shell_arg)
+    remaining, extra = split_app_args(sys.argv)
+    sys.argv[:] = remaining
+    _EXTRA_APP_ARGS[:] = extra
     return main()
 
 

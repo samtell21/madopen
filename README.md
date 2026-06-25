@@ -67,8 +67,7 @@ alias vimh='madopen -h -a nvim'
 | `zoxide` | directory resolution |
 | `fzf` | the picker |
 | `gio` (glibc/`glib2`) | accurate MIME detection |
-| `gtk-launch` (`gtk3`/`gtk4`) | launching GUI apps |
-| [`madft`](https://github.com/samtell21/madft) | MIME → app/category resolution — `cargo install --git https://github.com/samtell21/madft` then `madft init` |
+| [`madft`](https://github.com/samtell21/madft) | MIME → app/category resolution + `.desktop` Exec lookup — `cargo install --git https://github.com/samtell21/madft` then `madft init` |
 | `file` | preview text-detection |
 
 Optional preview enhancers (all degrade gracefully if absent): **`bat`**, **`eza`**
@@ -108,6 +107,20 @@ The built-in picker/preview ships inside the package — don't edit it in place
 | `-s, --select` | Auto-pick the top match instead of showing the picker. |
 | `-d, --directory` | Treat the whole query as a directory and browse its files. |
 | `-m, --maxdepth N` | How deep to descend when listing files (default `1`). |
+
+### Passing arguments to the app
+
+Anything after a standalone `--` is passed to the launched app, **before the
+file** — and it works whether or not you used `-a`, since madopen knows which app
+will open the file:
+
+```sh
+o report.md -- -R            # opens with the default text app: nvim -R report.md
+vim notes.md -- +42          # the `vim` alias (madopen -a nvim): nvim +42 notes.md
+o clip.mp4 -- --loop         # mpv --loop clip.mp4
+```
+
+(The inline form `-a "nvim +10"` still works too; both sets of args are combined.)
 
 ## The picker
 

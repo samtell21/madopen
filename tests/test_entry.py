@@ -29,3 +29,24 @@ def test_entry_init_emits_shell_function(monkeypatch, capsys):
     assert rc == 0
     assert "madopen()" in out
     assert "madopen-bin" in out
+
+
+def test_split_app_args():
+    import madopen.cli as cli
+    assert cli.split_app_args(["madopen-bin", "report", "--", "-R", "-n"]) == \
+        (["madopen-bin", "report"], ["-R", "-n"])
+    assert cli.split_app_args(["madopen-bin", "report"]) == \
+        (["madopen-bin", "report"], [])
+
+
+def test_entry_captures_post_double_dash_args(monkeypatch):
+    import madopen.cli as cli
+    captured = {}
+    monkeypatch.setattr(cli, "main",
+                        lambda: captured.update(argv=list(sys.argv),
+                                                extra=list(cli._EXTRA_APP_ARGS)))
+    monkeypatch.setattr(sys, "argv", ["madopen-bin", "-a", "nvim", "report", "--", "-R"])
+    cli.entry()
+    assert captured["extra"] == ["-R"]
+    assert "--" not in captured["argv"]
+    assert captured["argv"] == ["madopen-bin", "-a", "nvim", "report"]
